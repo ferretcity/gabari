@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      # `-C dist .` so the archive extracts flat - index.html and
+      # assets/ at the top level, ready to point a static file server
+      # straight at, not nested under a dist/ folder.
+      - run: tar -czf gabari-${GITHUB_REF_NAME}.tar.gz -C dist .
+      - run: gh release create "$GITHUB_REF_NAME" "gabari-${GITHUB_REF_NAME}.tar.gz" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

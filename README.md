@@ -51,6 +51,14 @@ Then open the printed `http://localhost:5173` URL.
 paths — upload or serve it as-is on any static host (Netlify, Vercel, S3,
 nginx, GitHub Pages, a subfolder, etc.), no server-side config needed.
 
+**Self-hosting without building it yourself**: every
+[release](https://github.com/jonlamca/gabari/releases) has a
+`gabari-vX.Y.Z.tar.gz` attached — that's the same `dist/` output above,
+pre-built. Download it, extract it, and point any static file server at
+the extracted folder (`index.html` and `assets/` sit right at its top
+level) — no Node.js or build step involved at all. See
+[RELEASING.md](RELEASING.md) for how these are cut.
+
 **Why pnpm specifically**: `@likec4/icons` (the bundled tech/cloud icon set
 `src/likec4/icons.tsx` lazily loads from) is only a *transitive* dependency
 of `@likec4/language-services`, not a direct one of this app - it's listed
