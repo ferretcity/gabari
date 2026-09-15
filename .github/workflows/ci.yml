@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Only one deploy should ever be in flight for Pages; a newer push should
+# win over a still-running older one rather than queueing behind it.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  # Publishes the artifact built above to GitHub Pages - only on a push to
+  # main (never for a pull request), and only once `build` has succeeded.
+  # Needs the repo's Pages source set to "GitHub Actions" (Settings ->
+  # Pages) and, while the repo is private, a paid GitHub plan - until
+  # then this job fails with a clear permissions error, which is expected
+  # rather than a sign anything here is broken.
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
