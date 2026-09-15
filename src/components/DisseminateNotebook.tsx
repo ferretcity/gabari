@@ -2,8 +2,9 @@ import { useState } from 'react'
 import type { LikeC4Model } from '@likec4/core/model'
 import type { LayoutedView } from '@likec4/core/types'
 import { newSectionId, type DisseminateDocument, type DisseminateSection } from '../likec4/disseminate'
-import type { ViewSummary } from '../likec4/engine'
+import type { ElementSummary, ViewSummary } from '../likec4/engine'
 import type { ViewLayoutDirection } from '../likec4/mutate'
+import { relatedDecisionRecords, type DecisionRecord } from '../likec4/decisions'
 import DiagramSnapshot from './DiagramSnapshot'
 
 const DIRECTIONS: { value: ViewLayoutDirection; label: string }[] = [
@@ -27,6 +28,8 @@ export default function DisseminateNotebook({
   model,
   diagramsById,
   views,
+  elements,
+  decisionRecords,
   onUpdateDocument,
   activeLayoutSectionId,
   onToggleLayoutSection,
@@ -42,6 +45,10 @@ export default function DisseminateNotebook({
   model: LikeC4Model.Layouted | null
   diagramsById: Map<string, LayoutedView>
   views: ViewSummary[]
+  /** for "Related decisions" under each view cell - see decisions.ts's
+   * `relatedDecisionRecords`. */
+  elements: ElementSummary[]
+  decisionRecords: DecisionRecord[]
   onUpdateDocument: (doc: DisseminateDocument) => void
   /** which view cell's "Layout…" disclosure is expanded, if any - drives
    * App.tsx's sandboxed-clone-and-reparse effect the same way the old
@@ -148,6 +155,8 @@ export default function DisseminateNotebook({
                 <ViewCell
                   section={section}
                   views={views}
+                  elements={elements}
+                  decisionRecords={decisionRecords}
                   model={model}
                   diagramsById={diagramsById}
                   isLayoutOpen={activeLayoutSectionId === section.id}
@@ -231,6 +240,8 @@ function TextCell({ section, onChange }: { section: DisseminateSection; onChange
 function ViewCell({
   section,
   views,
+  elements,
+  decisionRecords,
   model,
   diagramsById,
   isLayoutOpen,
@@ -246,6 +257,8 @@ function ViewCell({
 }: {
   section: DisseminateSection
   views: ViewSummary[]
+  elements: ElementSummary[]
+  decisionRecords: DecisionRecord[]
   model: LikeC4Model.Layouted | null
   diagramsById: Map<string, LayoutedView>
   isLayoutOpen: boolean
@@ -285,6 +298,15 @@ function ViewCell({
         <div className="disseminate-view-cell-canvas">
           <DiagramSnapshot model={effectiveModel} view={effectiveView} interactive />
         </div>
+      )}
+      {effectiveView && (
+        <RelatedDecisions
+          viewId={section.viewId}
+          nodeElementIds={effectiveView.nodes.map(n => n.modelRef)}
+          elements={elements}
+          views={views}
+          decisionRecords={decisionRecords}
+        />
       )}
       <input
         className="disseminate-caption-input"
@@ -348,5 +370,40 @@ function ViewCell({
         </div>
       )}
     </div>
+  )
+}
+
+/** "Annotate to elements/views... on report" - the Disseminate half of
+ * the Decisions feature (see likec4/decisions.ts). Every Decision
+ * record linked from this view itself, or from any element actually
+ * rendered as a node within it, shown as a compact list under the
+ * diagram - empty when there are none, no placeholder clutter. The
+ * static HTML export renders the same list from the same
+ * `relatedDecisionRecords` call (see exportDiagram.ts), not this
+ * component - this is only the live notebook's own rendering. */
+function RelatedDecisions({
+  viewId,
+  nodeElementIds,
+  elements,
+  views,
+  decisionRecords,
+}: {
+  viewId: string
+  nodeElementIds: ReadonlyArray<string | undefined>
+  elements: ElementSummary[]
+  views: ViewSummary[]
+  decisionRecords: DecisionRecord[]
+}) {
+  const related = relatedDecisionRecords(viewId, nodeElementIds, elements, views, decisionRecords)
+  if (related.length === 0) return null
+  return (
+    <ul className="related-decisions">
+      {related.map(d => (
+        <li key={d.path}>
+          <span className={'decision-status decision-status-' + d.status}>{d.status}</span>
+          {d.id}: {d.title}
+        </li>
+      ))}
+    </ul>
   )
 }

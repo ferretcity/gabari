@@ -174,6 +174,19 @@ export function DisseminateIcon() {
   )
 }
 
+/** A checklist - ADRs, requirements, governance changes, and compliance
+ * items are all, at heart, a record of something decided/required and
+ * whether it's been satisfied. */
+export function DecisionsIcon() {
+  return (
+    <svg {...commonProps} aria-hidden="true">
+      <rect x="5" y="3.5" width="14" height="17" rx="2" />
+      <path d="M9 8h6M9 16h4" />
+      <path d="m8.3 11.7 1.2 1.2 2.2-2.4" />
+    </svg>
+  )
+}
+
 export function SunIcon() {
   return (
     <svg {...commonProps} aria-hidden="true">

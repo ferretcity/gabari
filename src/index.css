@@ -638,6 +638,111 @@ summary.sidebar-section-header::-webkit-details-marker {
   gap: 10px;
 }
 
+/* Decisions - the main-canvas record editor (see DecisionEditor.tsx).
+   Reuses Disseminate's title/click-to-edit-text styling above rather
+   than duplicating it - only what's actually different here (the
+   status picker, the links panel) gets its own rules. */
+.decision-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 24px 80px;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.decision-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.decision-status-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.decision-body-preview,
+.decision-body-editor {
+  margin-bottom: 24px;
+}
+
+.decision-body-editor {
+  width: 100%;
+  min-height: 200px;
+}
+
+.decision-links-panel {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.decision-links-panel h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.decision-links-panel select {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.decision-status {
+  font-size: 10px;
+  text-transform: uppercase;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.decision-status-proposed {
+  color: var(--text-muted);
+  background: var(--code-bg);
+}
+
+.decision-status-accepted {
+  color: var(--success);
+  background: var(--success-bg, var(--code-bg));
+}
+
+.decision-status-deprecated {
+  color: var(--warning);
+  background: var(--code-bg);
+}
+
+.decision-status-superseded {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+/* "Related decisions" under a Disseminate view cell's diagram (see
+   DisseminateNotebook.tsx's RelatedDecisions) - the exported static HTML
+   gets an inline-styled equivalent of this same list (see
+   exportDiagram.ts), not this rule, so the two are kept visually
+   consistent by eye rather than by sharing a stylesheet. */
+.related-decisions {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.related-decisions li {
+  margin: 3px 0;
+}
+
+.related-decisions .decision-status {
+  margin-right: 6px;
+}
+
 .canvas-toolbar {
   display: flex;
   align-items: center;

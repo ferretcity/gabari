@@ -11,11 +11,13 @@ import type {
 import type { Files } from '../likec4/fileKeys'
 import type { ProjectConfig } from '../likec4/projectConfig'
 import type { DisseminateDocument } from '../likec4/disseminate'
+import type { DecisionKind, DecisionRecord } from '../likec4/decisions'
 import Library from './Library'
 import ProjectSection from './ProjectSection'
 import FileTree from './FileTree'
 import Deployment from './Deployment'
 import Disseminate from './Disseminate'
+import Decisions from './Decisions'
 import ActivityBar, { type SidebarPanel } from './ActivityBar'
 
 const ELEMENT_DND_TYPE = 'application/x-likec4-element-fqn'
@@ -65,6 +67,11 @@ export default function Sidebar({
   onSelectDisseminateDocument,
   onCreateDisseminateDocument,
   onDeleteDisseminateDocument,
+  decisionRecords,
+  decisionActiveId,
+  onSelectDecision,
+  onCreateDecision,
+  onDeleteDecision,
 }: {
   width: number
   files: Files
@@ -110,6 +117,11 @@ export default function Sidebar({
   onSelectDisseminateDocument: (id: string | null) => void
   onCreateDisseminateDocument: (title: string) => void
   onDeleteDisseminateDocument: (id: string) => void
+  decisionRecords: DecisionRecord[]
+  decisionActiveId: string | null
+  onSelectDecision: (path: string | null) => void
+  onCreateDecision: (kind: DecisionKind, title: string) => void
+  onDeleteDecision: (path: string) => void
 }) {
   const titleOf = (fqn: string) => elements.find(e => e.id === fqn)?.title || fqn
   // A project is almost always one file - only show "which file is this
@@ -168,6 +180,16 @@ export default function Sidebar({
           onSelectDocument={onSelectDisseminateDocument}
           onCreateDocument={onCreateDisseminateDocument}
           onDeleteDocument={onDeleteDisseminateDocument}
+        />
+      )}
+
+      {panel === 'decisions' && (
+        <Decisions
+          records={decisionRecords}
+          activeId={decisionActiveId}
+          onSelectRecord={onSelectDecision}
+          onCreateRecord={onCreateDecision}
+          onDeleteRecord={onDeleteDecision}
         />
       )}
 

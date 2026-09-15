@@ -39,6 +39,9 @@ import {
   updateView,
   setViewElementIncluded,
   setViewAutoLayout,
+  addLink,
+  removeLink,
+  type LinkTarget,
 } from './likec4/mutate'
 import { STARTER_FILES } from './likec4/dslGen'
 import {
@@ -48,6 +51,17 @@ import {
   newDocumentId,
   type DisseminateDocument,
 } from './likec4/disseminate'
+import {
+  listDecisions,
+  writeDecision,
+  deleteDecision,
+  newDecisionId,
+  newDecisionPath,
+  relatedDecisionRecords,
+  DECISION_KIND_INFO,
+  type DecisionKind,
+  type DecisionRecord,
+} from './likec4/decisions'
 import { captureSection, buildDocumentHtml, downloadHtml, type ExportedSection } from './likec4/exportDiagram'
 import { readProjectConfig, writeProjectConfig, type ProjectConfig } from './likec4/projectConfig'
 import { DEFAULT_FILE, type Files } from './likec4/fileKeys'
@@ -100,6 +114,7 @@ import ResizeHandle from './components/ResizeHandle'
 import ThemeToggle, { type ThemeChoice } from './components/ThemeToggle'
 import FileMenu from './components/FileMenu'
 import DisseminateNotebook, { type LayoutOverride } from './components/DisseminateNotebook'
+import DecisionEditor from './components/DecisionEditor'
 import { type SidebarPanel } from './components/ActivityBar'
 import { LogoMark } from './components/icons'
 
@@ -237,6 +252,7 @@ export default function App() {
    * `disseminateSandbox`. */
   const [disseminateLayoutOverride, setDisseminateLayoutOverride] = useState<LayoutOverride | null>(null)
   const [disseminateSandbox, setDisseminateSandbox] = useState<ParseResult | null>(null)
+  const [decisionActiveId, setDecisionActiveId] = useState<string | null>(null)
   // Two fully separate "which view is showing" states, one per layer, plus
   // which one is currently on screen - kept apart so switching modes never
   // loses your place in the other one (see the deployment-support plan's
@@ -346,18 +362,59 @@ export default function App() {
         }
         const view = section.viewId ? disseminateDiagramsById.get(section.viewId as never) : undefined
         const image = await captureSection(section.id, 'png', 2)
+        const related = section.viewId
+          ? relatedDecisionRecords(section.viewId, view?.nodes.map(n => n.modelRef) ?? [], result.elements, result.views, decisionRecords)
+          : []
         sections.push({
           id: section.id,
           type: 'view',
           title: view?.title ?? section.viewId,
           caption: section.caption,
           image: image ?? undefined,
+          relatedDecisions: related.map(d => ({ id: d.id, title: d.title, kind: d.kind, status: d.status })),
         })
       }
       const html = buildDocumentHtml(disseminateDoc.title, sections)
       downloadHtml(html, `${disseminateDoc.id}.html`)
     })()
   }
+
+  // --- Decisions: ADRs, requirements, governance changes, and
+  // compliance items (see likec4/decisions.ts), each a
+  // `decisions/*.md` file - a Gabari-invented, project-portable
+  // artifact, not LikeC4 source (same treatment as Disseminate
+  // documents above). Annotated onto elements/views/relationships via
+  // LikeC4's own native `link` mechanism, not a bespoke side-table -
+  // see mutate.ts's `addLink`/`removeLink`. ---
+  const decisionRecords = listDecisions(files)
+  const decisionRecord = decisionRecords.find(d => d.path === decisionActiveId) ?? null
+
+  const handleSelectDecision = (path: string | null) => setDecisionActiveId(path)
+  const handleCreateDecision = (kind: DecisionKind, title: string) => {
+    const id = newDecisionId(kind, decisionRecords)
+    const path = newDecisionPath(id, title)
+    setFiles(prev =>
+      writeDecision(prev, { path, id, kind, title, status: 'proposed', body: DECISION_KIND_INFO[kind].template }),
+    )
+    handleSelectDecision(path)
+  }
+  const handleDeleteDecision = (path: string) => {
+    setFiles(prev => deleteDecision(prev, path))
+    if (decisionActiveId === path) handleSelectDecision(null)
+  }
+  const handleUpdateDecision = (record: DecisionRecord) => {
+    setFiles(prev => writeDecision(prev, record))
+  }
+  const handleAddDecisionLink = (target: LinkTarget) => {
+    if (!decisionRecord) return
+    const record = decisionRecord
+    void runMutation(() => addLink(files, target, { path: record.path, title: `${record.id}: ${record.title}` }))
+  }
+  const handleRemoveDecisionLink = (target: LinkTarget) => {
+    if (!decisionRecord) return
+    void runMutation(() => removeLink(files, target, decisionRecord.path))
+  }
+
   const [contextMenu, setContextMenu] = useState<{ kind: 'node' | 'edge'; id: string; x: number; y: number } | null>(
     null,
   )
@@ -1306,6 +1363,11 @@ export default function App() {
           onSelectDisseminateDocument={handleSelectDisseminateDocument}
           onCreateDisseminateDocument={handleCreateDisseminateDocument}
           onDeleteDisseminateDocument={handleDeleteDisseminateDocument}
+          decisionRecords={decisionRecords}
+          decisionActiveId={decisionActiveId}
+          onSelectDecision={handleSelectDecision}
+          onCreateDecision={handleCreateDecision}
+          onDeleteDecision={handleDeleteDecision}
         />
 
         <ResizeHandle
@@ -1329,6 +1391,8 @@ export default function App() {
                   model={result.layoutedModel}
                   diagramsById={disseminateDiagramsById}
                   views={result.views}
+                  elements={result.elements}
+                  decisionRecords={decisionRecords}
                   onUpdateDocument={handleUpdateDisseminateDocument}
                   activeLayoutSectionId={disseminateActiveSectionId}
                   onToggleLayoutSection={handleSelectDisseminateSection}
@@ -1347,6 +1411,25 @@ export default function App() {
               ) : (
                 <div className="diagram-empty">
                   <p>Pick or create a document in the sidebar.</p>
+                </div>
+              )}
+            </div>
+          ) : sidebarPanel === 'decisions' ? (
+            <div className="diagram-panel">
+              {decisionRecord ? (
+                <DecisionEditor
+                  record={decisionRecord}
+                  elements={result.elements}
+                  relations={result.relationships}
+                  views={result.views}
+                  onUpdateRecord={handleUpdateDecision}
+                  onAddLink={handleAddDecisionLink}
+                  onRemoveLink={handleRemoveDecisionLink}
+                  busy={busy || parsing}
+                />
+              ) : (
+                <div className="diagram-empty">
+                  <p>Pick or create a decision in the sidebar.</p>
                 </div>
               )}
             </div>

@@ -45,19 +45,21 @@ import { parseFiles, type ElementKindSpec, type ElementSummary, type Relationshi
 import { fileKeyFromLocationUri, type Files } from './fileKeys'
 import { currentProjectId } from './projectConfig'
 import { isDisseminateDocFile } from './disseminate'
+import { isDecisionFile } from './decisions'
 
 /** Every mutation below locates/edits things via `fromSources(files)` -
  * shadowing the raw import so none of those ~20 call sites need to
  * remember, individually, that `disseminate/*.c4doc.json` files (see
- * disseminate.ts) aren't LikeC4 source and would otherwise fail to parse
- * as DSL (same reasoning as `engine.ts`'s `parseFiles`). `files` itself
- * (what every function here still reads/writes) is untouched - only what
- * gets handed to the language service for parsing is filtered. */
+ * disseminate.ts) and `decisions/*.md` files (see decisions.ts) aren't
+ * LikeC4 source and would otherwise fail to parse as DSL (same reasoning
+ * as `engine.ts`'s `parseFiles`). `files` itself (what every function
+ * here still reads/writes) is untouched - only what gets handed to the
+ * language service for parsing is filtered. */
 function fromSources(files: Files) {
-  const withoutDisseminateDocs = Object.fromEntries(
-    Object.entries(files).filter(([key]) => !isDisseminateDocFile(key)),
+  const nonDslFiles = Object.fromEntries(
+    Object.entries(files).filter(([key]) => !isDisseminateDocFile(key) && !isDecisionFile(key)),
   )
-  return rawFromSources(withoutDisseminateDocs)
+  return rawFromSources(nonDslFiles)
 }
 
 /**
@@ -1154,6 +1156,91 @@ export async function setViewAutoLayout(
     text = insertIntoBlock(text, { open, close }, parts.join(' '))
   }
   return repairUntilValid({ ...files, [file]: text })
+}
+
+/** What a `link` can be attached to - the three DSL constructs that all
+ * natively support a `link` block (ground-truthed against likec4.dev's
+ * DSL docs for model, views, and relationships). */
+export type LinkTarget = { type: 'element'; fqn: string } | { type: 'relation'; relationId: string } | { type: 'view'; viewId: string }
+
+async function ensureLinkTargetBlock(files: Files, target: LinkTarget): Promise<{ file: string; files: Files; block: BlockRange }> {
+  if (target.type === 'element') return ensureElementBlock(files, target.fqn)
+  if (target.type === 'relation') return ensureRelationBlock(files, target.relationId)
+  const { file, block } = await locateViewBlock(files, target.viewId)
+  return { file, files, block }
+}
+
+/** A `link` statement's path is relative to the *file it's written in*,
+ * not the project root - so linking the same decision from elements
+ * declared in different files must produce different text in each. This
+ * is pure path math (shared-prefix segments cancel, the rest becomes
+ * `../` climbs plus the remainder) so callers of `addLink`/`removeLink`
+ * never have to think about which file a target happens to live in -
+ * they just pass the decision's own `files`-key path. */
+function relativePath(fromFile: string, toPath: string): string {
+  const fromDir = fromFile.split('/').slice(0, -1)
+  const toParts = toPath.split('/')
+  let shared = 0
+  while (shared < fromDir.length && shared < toParts.length - 1 && fromDir[shared] === toParts[shared]) shared++
+  const climbs = fromDir.length - shared
+  const rel = [...Array<string>(climbs).fill('..'), ...toParts.slice(shared)].join('/')
+  return climbs > 0 ? rel : `./${rel}`
+}
+
+/** Like `insertIntoBlock`, but at the *start* of the block's content
+ * rather than just before its closing brace - a view's properties
+ * (`link` included) must come before any of its predicates
+ * (`include`/`exclude`), ground-truthed live: appending `link` after an
+ * existing `include *` produces "Expecting token of type '}' but found
+ * `link`" from the language service. Elements/relationships have no such
+ * ordering rule (no predicates to land after), so `addLink` only needs
+ * this for the view case. */
+function insertAtBlockStart(text: string, block: BlockRange, snippet: string): string {
+  const closingLineStart = text.lastIndexOf('\n', block.close) + 1
+  const closingLineIndent = text.slice(closingLineStart, block.close).match(/^[ \t]*/)?.[0] ?? ''
+  const childIndent = closingLineIndent + '  '
+  const insertion = '\n' + childIndent + snippet.trimEnd()
+  return text.slice(0, block.open + 1) + insertion + text.slice(block.open + 1)
+}
+
+/**
+ * Attach a `link <path> ['title']` to an element, relationship, or view
+ * - LikeC4's own native cross-reference mechanism (elements,
+ * relationships, and views all support a `link` block), reused here as
+ * the "annotate a Decision record onto this" mechanism (see
+ * `likec4/decisions.ts`) rather than inventing a bespoke side-table
+ * Gabari would have to invent and keep in sync itself. `path` is the
+ * decision's own root-relative `files` key - {@link relativePath} does
+ * the conversion to whatever the target's own declaring file needs.
+ */
+export async function addLink(files: Files, target: LinkTarget, link: { path: string; title?: string }): Promise<Files> {
+  const { file, files: nextFiles, block } = await ensureLinkTargetBlock(files, target)
+  const text = nextFiles[file] ?? ''
+  const url = relativePath(file, link.path)
+  const snippet = link.title ? `link ${url} ${quote(link.title)}` : `link ${url}`
+  const inserted = target.type === 'view' ? insertAtBlockStart(text, block, snippet) : insertIntoBlock(text, block, snippet)
+  return repairUntilValid({ ...nextFiles, [file]: inserted })
+}
+
+/** Remove a specific `link` (matched by the decision's root-relative
+ * `path`, converted the same way `addLink` wrote it) from an element/
+ * relationship/view - same "regex scoped to the block, remove every
+ * match" shape as `setViewElementIncluded`. */
+export async function removeLink(files: Files, target: LinkTarget, path: string): Promise<Files> {
+  const { file, files: nextFiles, block } = await ensureLinkTargetBlock(files, target)
+  let text = nextFiles[file] ?? ''
+  let { open, close } = block
+  const url = relativePath(file, path)
+  const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const lineRe = new RegExp(`^[ \\t]*link[ \\t]+${escaped}\\b.*(?:\\r?\\n|$)`, 'gm')
+  lineRe.lastIndex = open + 1
+  let m: RegExpExecArray | null
+  while ((m = lineRe.exec(text)) && m.index < close) {
+    text = text.slice(0, m.index) + text.slice(m.index + m[0].length)
+    close -= m[0].length
+    lineRe.lastIndex = m.index
+  }
+  return repairUntilValid({ ...nextFiles, [file]: text })
 }
 
 /** Remove a view (`view id { }` or `dynamic view id { }`) entirely,

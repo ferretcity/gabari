@@ -4,6 +4,7 @@ import type { LayoutedView } from '@likec4/core/types'
 import { DEFAULT_FILE, fileKeyFromFsPath, fileKeyFromLocationUri, type Files } from './fileKeys'
 import { PROJECT_CONFIG_FILE, currentProjectId, readProjectConfig, type ProjectConfig } from './projectConfig'
 import { isDisseminateDocFile } from './disseminate'
+import { isDecisionFile } from './decisions'
 
 export interface ElementStyleSummary {
   color: string | null
@@ -14,6 +15,18 @@ export interface ElementStyleSummary {
   size: string | null
   /** e.g. "tech:react", "aws:lambda", a bare URL, or null if unset */
   icon: string | null
+}
+
+/** One of this entity's `link`s that points at a Decision record (see
+ * `likec4/decisions.ts`) - resolved to the decision file's own
+ * root-relative `files` key, regardless of how the DSL itself wrote the
+ * relative path (see engine.ts's `resolveRelativeLink`). Every other
+ * kind of `link` (an external URL, a link to plain source code, etc.)
+ * is intentionally not surfaced here - Gabari has no special use for
+ * those today. */
+export interface DecisionLink {
+  path: string
+  title: string | null
 }
 
 export interface ElementSummary {
@@ -29,12 +42,46 @@ export interface ElementSummary {
   file: string
   /** effective style (kind defaults merged with any per-instance override) */
   style: ElementStyleSummary
+  decisionLinks: DecisionLink[]
 }
 
 /** Pull the plain text out of a LikeC4 MarkdownOrString-shaped value. */
 function plainText(value: unknown): string {
   const source = (value as { $source?: { txt?: string } } | null | undefined)?.$source
   return source?.txt ?? ''
+}
+
+/** A `link` statement's path is relative to the file it's written in
+ * (see `mutate.ts`'s `addLink`, which is the inverse of this) - resolve
+ * it back to a root-relative `files` key by walking `.`/`..` segments
+ * against the declaring file's own directory. Small and local rather
+ * than shared with `mutate.ts`, same "a two-line path helper doesn't
+ * need its own module" call `fileKeys.ts` already makes. */
+function resolveRelativeLink(fromFile: string, relative: string): string {
+  const stack = fromFile.split('/').slice(0, -1)
+  for (const segment of relative.split('/')) {
+    if (segment === '' || segment === '.') continue
+    else if (segment === '..') stack.pop()
+    else stack.push(segment)
+  }
+  return stack.join('/')
+}
+
+/** Filter an entity's raw `.links` down to the ones pointing at a
+ * Decision record (see `decisions.ts`) - an external URL, or a relative
+ * link to anything other than `decisions/*.md`, is left out. */
+function decisionLinksOf(
+  links: ReadonlyArray<{ title?: string; url: string; relative?: string }> | undefined,
+  file: string,
+): DecisionLink[] {
+  if (!links) return []
+  const result: DecisionLink[] = []
+  for (const link of links) {
+    if (!link.relative) continue
+    const path = resolveRelativeLink(file, link.relative)
+    if (isDecisionFile(path)) result.push({ path, title: link.title ?? null })
+  }
+  return result
 }
 
 export interface RelationSummary {
@@ -49,6 +96,7 @@ export interface RelationSummary {
   line: string | null
   head: string | null
   tail: string | null
+  decisionLinks: DecisionLink[]
 }
 
 export interface ViewSummary {
@@ -88,6 +136,7 @@ export interface ViewSummary {
   folder: string | null
   /** which `files` record key declares this view */
   file: string
+  decisionLinks: DecisionLink[]
 }
 
 export interface ParseError {
@@ -216,17 +265,18 @@ export async function parseFiles(files: Files): Promise<ParseResult> {
   let likec4
   try {
     // Disseminate document files (`disseminate/*.c4doc.json` - see
-    // disseminate.ts) are a Gabari-invented artifact, not LikeC4 source -
+    // disseminate.ts) and decision records (`decisions/*.md` - see
+    // decisions.ts) are Gabari-invented artifacts, not LikeC4 source -
     // `fromSources` has no way to know that and would try (and fail) to
-    // parse their JSON as DSL, same as it already special-cases
+    // parse their JSON/markdown as DSL, same as it already special-cases
     // `likec4.config.json` by filename but can't know about ours. Only
     // filtered out of what gets *parsed*; `files` itself (passed to
     // `readProjectConfig`/git sync/the file tree/etc. below and
     // elsewhere) is untouched.
-    const withoutDisseminateDocs = Object.fromEntries(
-      Object.entries(files).filter(([key]) => !isDisseminateDocFile(key)),
+    const nonDslFiles = Object.fromEntries(
+      Object.entries(files).filter(([key]) => !isDisseminateDocFile(key) && !isDecisionFile(key)),
     )
-    const sources = Object.keys(withoutDisseminateDocs).length ? withoutDisseminateDocs : { [DEFAULT_FILE]: ' ' }
+    const sources = Object.keys(nonDslFiles).length ? nonDslFiles : { [DEFAULT_FILE]: ' ' }
     likec4 = await fromSources(sources)
   } catch (err) {
     return { ok: false, errors: [{ message: String(err), line: 0, file: DEFAULT_FILE }], ...EMPTY }
@@ -296,13 +346,15 @@ export async function parseFiles(files: Files): Promise<ParseResult> {
   }
   const elements: ElementSummary[] = [...computed.elements()].map(e => {
     const style = (e as unknown as { style?: ElementStyleSummary }).style
+    const links = (e as unknown as { links?: ReadonlyArray<{ title?: string; url: string; relative?: string }> }).links
+    const file = fileOf({ element: e.id })
     return {
       id: e.id,
       kind: e.kind,
       title: e.title,
       description: plainText((e as unknown as { description?: unknown }).description),
       parent: e.parent ? e.parent.id : null,
-      file: fileOf({ element: e.id }),
+      file,
       style: {
         color: style?.color ?? null,
         shape: style?.shape ?? null,
@@ -311,20 +363,24 @@ export async function parseFiles(files: Files): Promise<ParseResult> {
         size: style?.size ?? null,
         icon: style?.icon ?? null,
       },
+      decisionLinks: decisionLinksOf(links, file),
     }
   })
   const relationships: RelationSummary[] = [...computed.relationships()].map(r => {
     const rel = r as unknown as { color?: string; line?: string; head?: string; tail?: string }
+    const links = (r as unknown as { links?: ReadonlyArray<{ title?: string; url: string; relative?: string }> }).links
+    const file = fileOf({ relation: r.id })
     return {
       id: r.id,
       source: r.source.id,
       target: r.target.id,
       title: r.title,
-      file: fileOf({ relation: r.id }),
+      file,
       color: rel.color ?? null,
       line: rel.line ?? null,
       head: rel.head ?? null,
       tail: rel.tail ?? null,
+      decisionLinks: decisionLinksOf(links, file),
     }
   })
   const views: ViewSummary[] = [...computed.views()].map(v => {
@@ -338,7 +394,9 @@ export async function parseFiles(files: Files): Promise<ParseResult> {
       order: number | undefined
       folder: { isRoot: boolean; path: string }
       viewPath: string
+      links?: ReadonlyArray<{ title?: string; url: string; relative?: string }>
     }
+    const file = fileOf({ view: view.id })
     return {
       id: view.id,
       title: view.titleOrId,
@@ -348,7 +406,8 @@ export async function parseFiles(files: Files): Promise<ParseResult> {
       viewOf: view.isScopedElementView() ? (view.viewOf?.id ?? null) : null,
       order: view.order ?? null,
       folder: view.folder.isRoot ? null : view.folder.path,
-      file: fileOf({ view: view.id }),
+      file,
+      decisionLinks: decisionLinksOf(view.links, file),
     }
   })
 

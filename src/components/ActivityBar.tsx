@@ -1,6 +1,6 @@
-import { DeploymentIcon, DisseminateIcon, FolderIcon, LibraryIcon, ModelIcon } from './icons'
+import { DecisionsIcon, DeploymentIcon, DisseminateIcon, FolderIcon, LibraryIcon, ModelIcon } from './icons'
 
-export type SidebarPanel = 'files' | 'library' | 'model' | 'deployment' | 'disseminate'
+export type SidebarPanel = 'files' | 'library' | 'model' | 'deployment' | 'decisions' | 'disseminate'
 
 interface ActivityItem {
   id: SidebarPanel
@@ -37,6 +37,13 @@ const DEPLOYMENT_ITEM: ActivityItem = {
   icon: DeploymentIcon,
 }
 
+const DECISIONS_ITEM: ActivityItem = {
+  id: 'decisions',
+  label: 'Decisions',
+  hint: 'Decisions — ADRs, requirements, governance changes and compliance items, annotated onto elements/views/relationships',
+  icon: DecisionsIcon,
+}
+
 const DISSEMINATE_ITEM: ActivityItem = {
   id: 'disseminate',
   label: 'Disseminate',
@@ -58,7 +65,11 @@ const DISSEMINATE_ITEM: ActivityItem = {
  * canvas's view-mode toggle. "Disseminate" sits in its own tier below a
  * second divider - it completes a Define -> Design -> Deployment ->
  * Disseminate lifecycle, but operates *across* whichever view you already
- * built rather than being a fourth model layer itself. */
+ * built rather than being a fourth model layer itself. "Decisions" gets
+ * its own tier between the two, for the same reason: it's not another
+ * logical-model layer, and not the publish step either - it's the
+ * record of *why* the model looks the way it does, referenced from
+ * Disseminate reports once it exists. */
 export default function ActivityBar({
   active,
   onSelect,
@@ -88,6 +99,8 @@ export default function ActivityBar({
       {LOGICAL_ITEMS.map(renderButton)}
       <div className="activity-bar-divider" aria-hidden="true" />
       {renderButton(DEPLOYMENT_ITEM)}
+      <div className="activity-bar-divider" aria-hidden="true" />
+      {renderButton(DECISIONS_ITEM)}
       <div className="activity-bar-divider" aria-hidden="true" />
       {renderButton(DISSEMINATE_ITEM)}
     </nav>

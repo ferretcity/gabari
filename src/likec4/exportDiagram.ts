@@ -114,6 +114,12 @@ export interface ExportedSection {
   image?: string
   imageWidth?: number
   imageHeight?: number
+  /** `type === 'view'` only - every Decision record linked from this
+   * view or an element rendered in it (see `decisions.ts`'s
+   * `relatedDecisionRecords`), so the "annotate to elements/views... on
+   * report" half of that feature survives the static export too, not
+   * just the live notebook. */
+  relatedDecisions?: Array<{ id: string; title: string; kind: string; status: string }>
 }
 
 /** Assemble every section's rendered content into one standalone,
@@ -135,7 +141,12 @@ export function buildDocumentHtml(title: string, sections: ExportedSection[]): s
         ? `<img src="${section.image}" alt="${esc(section.title ?? '')}" style="max-width:100%;height:auto;display:block;margin:0 auto;" />`
         : ''
       const caption = section.caption ? `<figcaption>${esc(section.caption)}</figcaption>` : ''
-      return `<section class="view-section"><figure>${img}${caption}</figure></section>`
+      const related = section.relatedDecisions?.length
+        ? `<ul class="related-decisions">${section.relatedDecisions
+            .map(d => `<li><span class="decision-status">${esc(d.status)}</span>${esc(d.id)}: ${esc(d.title)}</li>`)
+            .join('')}</ul>`
+        : ''
+      return `<section class="view-section"><figure>${img}${caption}</figure>${related}</section>`
     })
     .join('\n')
 
@@ -151,6 +162,9 @@ export function buildDocumentHtml(title: string, sections: ExportedSection[]): s
   figure { margin: 0; text-align: center; }
   figcaption { margin-top: 8px; font-size: 13px; color: #6b7280; }
   .text-section p { margin: 0 0 12px; }
+  .related-decisions { list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; color: #4b5563; text-align: left; }
+  .related-decisions li { margin: 4px 0; }
+  .decision-status { font-size: 10px; text-transform: uppercase; background: #f1f2f4; border-radius: 4px; padding: 1px 5px; margin-right: 6px; }
 </style>
 </head>
 <body>

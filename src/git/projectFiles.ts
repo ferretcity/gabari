@@ -16,7 +16,9 @@ export function isProjectFile(path: string): boolean {
     // LikeC4 source, but a project-portable Gabari artifact that should
     // survive a folder-import or a repo fetch/push the same as everything
     // else in `files`.
-    /\.c4doc\.json$/i.test(path)
+    /\.c4doc\.json$/i.test(path) ||
+    // Decision records (see likec4/decisions.ts) - same reasoning.
+    /^decisions\/.*\.md$/i.test(path)
   )
 }
 
