@@ -127,7 +127,12 @@ export interface ExportedSection {
  * the file is fully self-contained and viewable by just opening it (or
  * pasting its content into a wiki/CMS that accepts raw HTML). */
 export function buildDocumentHtml(title: string, sections: ExportedSection[]): string {
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  // Escapes `"` too, not just `<`/`>`/`&` - every call site here writes
+  // into an HTML *attribute* (alt="...") as well as element content, and
+  // an unescaped `"` in a title/caption/status would otherwise break out
+  // of that attribute (ground-truthed by CodeQL: js/incomplete-html-
+  // attribute-sanitization, a real XSS in the exported static HTML).
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   const body = sections
     .map(section => {
       if (section.type === 'text') {
