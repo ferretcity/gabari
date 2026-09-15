@@ -39,6 +39,7 @@ export default function DisseminateNotebook({
   sandboxModel,
   sandboxView,
   onExport,
+  onExportSlides,
   busy,
 }: {
   doc: DisseminateDocument
@@ -64,6 +65,8 @@ export default function DisseminateNotebook({
   sandboxModel: LikeC4Model.Layouted | null
   sandboxView: LayoutedView | null
   onExport: () => void
+  /** Experimental - see the toolbar's "Export as Slides…" button. */
+  onExportSlides: () => void
   busy: boolean
 }) {
   const [editingTitle, setEditingTitle] = useState(false)
@@ -122,9 +125,20 @@ export default function DisseminateNotebook({
             {doc.title}
           </h2>
         )}
-        <button type="button" className="btn btn-primary btn-sm" onClick={onExport} disabled={busy || doc.sections.length === 0}>
-          Export as HTML…
-        </button>
+        <div className="disseminate-export-actions">
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={onExportSlides}
+            disabled={busy || doc.sections.length === 0}
+            title="Experimental - a self-contained slide deck, one section per slide"
+          >
+            Export as Slides… (experimental)
+          </button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={onExport} disabled={busy || doc.sections.length === 0}>
+            Export as HTML…
+          </button>
+        </div>
       </div>
 
       <Inserter onInsertText={() => insertTextAt(0)} onInsertView={() => insertViewAt(0)} />
@@ -150,7 +164,11 @@ export default function DisseminateNotebook({
             </div>
             <div className="disseminate-cell-body">
               {section.type === 'text' ? (
-                <TextCell section={section} onChange={text => updateSection(section.id, { text })} />
+                <TextCell
+                  section={section}
+                  onChange={text => updateSection(section.id, { text })}
+                  onChangeSlideText={slideText => updateSection(section.id, { slideText })}
+                />
               ) : (
                 <ViewCell
                   section={section}
@@ -169,6 +187,7 @@ export default function DisseminateNotebook({
                   busy={busy}
                   onPickView={viewId => updateSection(section.id, { viewId })}
                   onChangeCaption={caption => updateSection(section.id, { caption })}
+                  onChangeSlideText={slideText => updateSection(section.id, { slideText })}
                 />
               )}
             </div>
@@ -198,41 +217,62 @@ function Inserter({ onInsertText, onInsertView }: { onInsertText: () => void; on
   )
 }
 
-function TextCell({ section, onChange }: { section: DisseminateSection; onChange: (text: string) => void }) {
+function TextCell({
+  section,
+  onChange,
+  onChangeSlideText,
+}: {
+  section: DisseminateSection
+  onChange: (text: string) => void
+  onChangeSlideText: (slideText: string) => void
+}) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(section.text ?? '')
+  const [slideDraft, setSlideDraft] = useState(section.slideText ?? '')
 
-  if (editing) {
-    return (
-      <textarea
-        autoFocus
-        className="disseminate-text-editor"
-        rows={4}
-        value={draft}
-        onChange={e => setDraft(e.target.value)}
-        onBlur={() => {
-          setEditing(false)
-          onChange(draft)
-        }}
-        onKeyDown={e => {
-          if (e.key === 'Escape') {
-            setDraft(section.text ?? '')
-            setEditing(false)
-          }
-        }}
-      />
-    )
-  }
   const text = section.text ?? ''
   return (
-    <div
-      className="disseminate-preview-text disseminate-text-clickable"
-      onClick={() => {
-        setDraft(text)
-        setEditing(true)
-      }}
-    >
-      {text ? text.split(/\n{2,}/).map((p, i) => <p key={i}>{p}</p>) : <p className="empty-hint">Click to write…</p>}
+    <div>
+      {editing ? (
+        <textarea
+          autoFocus
+          className="disseminate-text-editor"
+          rows={4}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={() => {
+            setEditing(false)
+            onChange(draft)
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Escape') {
+              setDraft(text)
+              setEditing(false)
+            }
+          }}
+        />
+      ) : (
+        <div
+          className="disseminate-preview-text disseminate-text-clickable"
+          onClick={() => {
+            setDraft(text)
+            setEditing(true)
+          }}
+        >
+          {text ? text.split(/\n{2,}/).map((p, i) => <p key={i}>{p}</p>) : <p className="empty-hint">Click to write…</p>}
+        </div>
+      )}
+      <label className="disseminate-slide-override">
+        Slide-only version (optional)
+        <textarea
+          className="disseminate-slide-override-input"
+          rows={2}
+          value={slideDraft}
+          onChange={e => setSlideDraft(e.target.value)}
+          onBlur={() => onChangeSlideText(slideDraft)}
+          placeholder="Same as the text above when left blank"
+        />
+      </label>
     </div>
   )
 }
@@ -254,6 +294,7 @@ function ViewCell({
   busy,
   onPickView,
   onChangeCaption,
+  onChangeSlideText,
 }: {
   section: DisseminateSection
   views: ViewSummary[]
@@ -271,6 +312,7 @@ function ViewCell({
   busy: boolean
   onPickView: (viewId: string) => void
   onChangeCaption: (caption: string) => void
+  onChangeSlideText: (slideText: string) => void
 }) {
   if (!section.viewId) {
     return (
@@ -313,6 +355,12 @@ function ViewCell({
         value={section.caption ?? ''}
         onChange={e => onChangeCaption(e.target.value)}
         placeholder="Caption, shown under the exported image (optional)"
+      />
+      <input
+        className="disseminate-caption-input disseminate-slide-override-input"
+        value={section.slideText ?? ''}
+        onChange={e => onChangeSlideText(e.target.value)}
+        placeholder="Slide caption (optional) - same as caption above when left blank"
       />
       <button type="button" className="btn btn-sm" onClick={onToggleLayout}>
         {isLayoutOpen ? 'Hide layout' : 'Layout…'}

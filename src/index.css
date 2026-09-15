@@ -524,6 +524,13 @@ summary.sidebar-section-header::-webkit-details-marker {
   z-index: 1;
 }
 
+.disseminate-export-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .disseminate-title {
   margin: 0;
   font-size: 22px;
@@ -626,6 +633,32 @@ summary.sidebar-section-header::-webkit-details-marker {
   width: 100%;
   margin-top: 6px;
   font-size: 12px;
+}
+
+/* The optional per-section slide-only override (see decisions.ts's
+   note on DisseminateSection.slideText) - deliberately muted/secondary
+   next to the section's normal content, and always visible rather than
+   hidden behind a toggle, so it's discoverable without hunting. */
+.disseminate-slide-override {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.disseminate-slide-override-input {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text);
+  background: var(--code-bg);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  resize: vertical;
 }
 
 .disseminate-layout-sandbox {

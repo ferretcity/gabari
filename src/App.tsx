@@ -62,7 +62,7 @@ import {
   type DecisionKind,
   type DecisionRecord,
 } from './likec4/decisions'
-import { captureSection, buildDocumentHtml, downloadHtml, type ExportedSection } from './likec4/exportDiagram'
+import { captureSection, buildDocumentHtml, buildSlidesHtml, downloadHtml, type ExportedSection } from './likec4/exportDiagram'
 import { readProjectConfig, writeProjectConfig, type ProjectConfig } from './likec4/projectConfig'
 import { DEFAULT_FILE, type Files } from './likec4/fileKeys'
 import { loadManualLayouts, saveManualLayouts, type ManualLayouts } from './likec4/manualLayouts'
@@ -351,31 +351,53 @@ export default function App() {
     })
   }
 
+  /** Shared by both Disseminate exports below - captures each view
+   * section's image and looks up its related decisions exactly once
+   * (the expensive part), regardless of which format is chosen.
+   * `slideText` rides along unread by `buildDocumentHtml`, used only by
+   * `buildSlidesHtml`. */
+  const buildDisseminateExportSections = async (doc: DisseminateDocument): Promise<ExportedSection[]> => {
+    const sections: ExportedSection[] = []
+    for (const section of doc.sections) {
+      if (section.type === 'text') {
+        sections.push({ id: section.id, type: 'text', text: section.text ?? '', slideText: section.slideText })
+        continue
+      }
+      const view = section.viewId ? disseminateDiagramsById.get(section.viewId as never) : undefined
+      const image = await captureSection(section.id, 'png', 2)
+      const related = section.viewId
+        ? relatedDecisionRecords(section.viewId, view?.nodes.map(n => n.modelRef) ?? [], result.elements, result.views, decisionRecords)
+        : []
+      sections.push({
+        id: section.id,
+        type: 'view',
+        title: view?.title ?? section.viewId,
+        caption: section.caption,
+        image: image ?? undefined,
+        relatedDecisions: related.map(d => ({ id: d.id, title: d.title, kind: d.kind, status: d.status })),
+        slideText: section.slideText,
+      })
+    }
+    return sections
+  }
+
   const handleExportDisseminateDocument = () => {
     if (!disseminateDoc) return
     void (async () => {
-      const sections: ExportedSection[] = []
-      for (const section of disseminateDoc.sections) {
-        if (section.type === 'text') {
-          sections.push({ id: section.id, type: 'text', text: section.text ?? '' })
-          continue
-        }
-        const view = section.viewId ? disseminateDiagramsById.get(section.viewId as never) : undefined
-        const image = await captureSection(section.id, 'png', 2)
-        const related = section.viewId
-          ? relatedDecisionRecords(section.viewId, view?.nodes.map(n => n.modelRef) ?? [], result.elements, result.views, decisionRecords)
-          : []
-        sections.push({
-          id: section.id,
-          type: 'view',
-          title: view?.title ?? section.viewId,
-          caption: section.caption,
-          image: image ?? undefined,
-          relatedDecisions: related.map(d => ({ id: d.id, title: d.title, kind: d.kind, status: d.status })),
-        })
-      }
+      const sections = await buildDisseminateExportSections(disseminateDoc)
       const html = buildDocumentHtml(disseminateDoc.title, sections)
       downloadHtml(html, `${disseminateDoc.id}.html`)
+    })()
+  }
+
+  /** Experimental - see DisseminateNotebook.tsx's toolbar. Same shared
+   * sections as the document export above; only the template differs. */
+  const handleExportDisseminateSlides = () => {
+    if (!disseminateDoc) return
+    void (async () => {
+      const sections = await buildDisseminateExportSections(disseminateDoc)
+      const html = buildSlidesHtml(disseminateDoc.title, sections)
+      downloadHtml(html, `${disseminateDoc.id}-slides.html`)
     })()
   }
 
@@ -1442,6 +1464,7 @@ export default function App() {
                     null
                   }
                   onExport={handleExportDisseminateDocument}
+                  onExportSlides={handleExportDisseminateSlides}
                   busy={busy || parsing}
                 />
               ) : (

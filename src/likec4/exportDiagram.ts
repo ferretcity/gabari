@@ -120,6 +120,21 @@ export interface ExportedSection {
    * report" half of that feature survives the static export too, not
    * just the live notebook. */
   relatedDecisions?: Array<{ id: string; title: string; kind: string; status: string }>
+  /** Copied straight from `DisseminateSection.slideText` - only
+   * `buildSlidesHtml` reads this; `buildDocumentHtml` ignores it
+   * entirely, so the scrolling document export is unaffected by
+   * whatever slide-only content a section carries. */
+  slideText?: string
+}
+
+// Escapes `"` too, not just `<`/`>`/`&` - every call site writes into an
+// HTML *attribute* (alt="...") as well as element content, and an
+// unescaped `"` in a title/caption/status would otherwise break out of
+// that attribute (ground-truthed by CodeQL: js/incomplete-html-
+// attribute-sanitization, a real XSS in the exported static HTML).
+// Module-scoped so both export templates share the one hardened copy.
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 /** Assemble every section's rendered content into one standalone,
@@ -127,12 +142,6 @@ export interface ExportedSection {
  * the file is fully self-contained and viewable by just opening it (or
  * pasting its content into a wiki/CMS that accepts raw HTML). */
 export function buildDocumentHtml(title: string, sections: ExportedSection[]): string {
-  // Escapes `"` too, not just `<`/`>`/`&` - every call site here writes
-  // into an HTML *attribute* (alt="...") as well as element content, and
-  // an unescaped `"` in a title/caption/status would otherwise break out
-  // of that attribute (ground-truthed by CodeQL: js/incomplete-html-
-  // attribute-sanitization, a real XSS in the exported static HTML).
-  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   const body = sections
     .map(section => {
       if (section.type === 'text') {
@@ -175,6 +184,117 @@ export function buildDocumentHtml(title: string, sections: ExportedSection[]): s
 <body>
 <h1>${esc(title)}</h1>
 ${body}
+</body>
+</html>
+`
+}
+
+/**
+ * Assemble every section into a standalone, self-contained slide deck -
+ * experimental (see `DisseminateNotebook.tsx`'s toolbar). One slide per
+ * section (plus a title slide first), each using `section.slideText`
+ * when a section has one instead of its normal `text`/`caption` - the
+ * intended way to shorten a section for presenting, rather than any
+ * auto-reflow/splitting here. No dependency (matching this app's own
+ * "no incidental dependency" bar all session): navigation is a small
+ * inline script - arrow keys/Space/click advance, on-screen prev/next
+ * buttons for a keyboard-less click/touch, `f` toggles the real
+ * Fullscreen API. `@media print` shows every slide on its own page
+ * unconditionally, so printing this file to PDF from the browser is a
+ * free, working "export to PDF slides" path with no separate code.
+ */
+export function buildSlidesHtml(title: string, sections: ExportedSection[]): string {
+  const slides = sections
+    .map(section => {
+      if (section.type === 'text') {
+        const text = section.slideText || section.text || ''
+        const paragraphs = text
+          .split(/\n{2,}/)
+          .map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`)
+          .join('\n')
+        return `<section class="slide slide-text"><div class="slide-text-body">${paragraphs}</div></section>`
+      }
+      const img = section.image
+        ? `<img class="slide-image" src="${section.image}" alt="${esc(section.title ?? '')}" />`
+        : ''
+      const captionText = section.slideText || section.caption || ''
+      const caption = captionText ? `<p class="slide-caption">${esc(captionText)}</p>` : ''
+      const related = section.relatedDecisions?.length
+        ? `<ul class="related-decisions">${section.relatedDecisions
+            .map(d => `<li><span class="decision-status">${esc(d.status)}</span>${esc(d.id)}: ${esc(d.title)}</li>`)
+            .join('')}</ul>`
+        : ''
+      return `<section class="slide slide-view">${img}${caption}${related}</section>`
+    })
+    .join('\n')
+
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>${esc(title)}</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0f1115; }
+  .slide { display: none; width: 100vw; height: 100vh; padding: 6vh 8vw; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #f1f3f5; font: 20px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .slide.active { display: flex; }
+  .slide-title h1 { font-size: 56px; margin: 0; }
+  .slide-image { max-width: 100%; max-height: 70vh; object-fit: contain; background: #fff; border-radius: 8px; }
+  .slide-caption { margin: 24px 0 0; font-size: 22px; color: #cbd5e1; }
+  .slide-text-body { max-width: 900px; font-size: 28px; }
+  .slide-text-body p { margin: 0 0 20px; }
+  .slide .related-decisions { list-style: none; margin: 16px 0 0; padding: 0; font-size: 14px; color: #94a3b8; }
+  .slide .related-decisions li { margin: 4px 0; }
+  .slide .decision-status { font-size: 10px; text-transform: uppercase; background: #1e293b; color: #e2e8f0; border-radius: 4px; padding: 1px 5px; margin-right: 6px; }
+  .slide-counter { position: fixed; bottom: 18px; right: 22px; font-size: 14px; color: #64748b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .slide-nav { position: fixed; bottom: 14px; left: 18px; display: flex; gap: 8px; }
+  .slide-nav button { background: #1e293b; color: #f1f3f5; border: none; border-radius: 6px; padding: 8px 14px; font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; cursor: pointer; }
+  .slide-nav button:hover:not(:disabled) { background: #334155; }
+  .slide-nav button:disabled { opacity: 0.35; cursor: default; }
+  @media print {
+    html, body { background: #fff; }
+    .slide { display: flex !important; page-break-after: always; }
+    .slide-counter, .slide-nav { display: none; }
+  }
+</style>
+</head>
+<body>
+<section class="slide slide-title active"><h1>${esc(title)}</h1></section>
+${slides}
+<div class="slide-nav"><button id="slide-prev" type="button" aria-label="Previous slide">←</button><button id="slide-next" type="button" aria-label="Next slide">→</button></div>
+<div class="slide-counter" id="slide-counter"></div>
+<script>
+(function () {
+  var slides = document.querySelectorAll('.slide');
+  var counter = document.getElementById('slide-counter');
+  var prevBtn = document.getElementById('slide-prev');
+  var nextBtn = document.getElementById('slide-next');
+  var i = 0;
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function (s, idx) { s.classList.toggle('active', idx === i); });
+    if (counter) counter.textContent = (i + 1) + ' / ' + slides.length;
+    if (prevBtn) prevBtn.disabled = i === 0;
+    if (nextBtn) nextBtn.disabled = i === slides.length - 1;
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); show(i + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { show(i - 1); }
+    else if (e.key === 'Home') { show(0); }
+    else if (e.key === 'End') { show(slides.length - 1); }
+    else if (e.key === 'f' || e.key === 'F') {
+      if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen();
+    }
+  });
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('.slide-nav, .slide-counter')) return;
+    show(e.clientX < window.innerWidth / 2 ? i - 1 : i + 1);
+  });
+  if (prevBtn) prevBtn.addEventListener('click', function () { show(i - 1); });
+  if (nextBtn) nextBtn.addEventListener('click', function () { show(i + 1); });
+  show(0);
+})();
+</script>
 </body>
 </html>
 `

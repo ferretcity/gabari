@@ -25,6 +25,14 @@ export interface DisseminateSection {
   /** `type === 'text'` only - plain text/simple paragraphs, no markdown
    * parser for v0 (see the plan's size-consciousness note) */
   text?: string
+  /** An optional, condensed alternative to this section's normal
+   * content, used only when exporting to slides (see
+   * `exportDiagram.ts`'s `buildSlidesHtml`) - never in the scrolling
+   * document export. A text section's full prose is rarely slide-sized,
+   * and a view section's caption may want a shorter, presentation-style
+   * summary. Blank/absent falls back to the section's normal
+   * `text`/`caption`. */
+  slideText?: string
 }
 
 export interface DisseminateDocument {
