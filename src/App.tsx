@@ -1088,7 +1088,36 @@ export default function App() {
   const contextMenuItems: ContextMenuEntry[] = (() => {
     if (!contextMenu) return []
     if (contextMenu.kind === 'node') {
-      const fqn = contextMenu.id
+      const id = contextMenu.id
+      // The deployment canvas renders deployment-tree nodes (deployed
+      // instances and plain deployment nodes), never elements directly -
+      // right-clicking one and calling the element handlers (as this
+      // used to do unconditionally) edited/deleted the wrong thing.
+      // Contextualize to what's actually under the cursor: a deployed
+      // instance is presented as exactly that - an instance *of* a
+      // logical element, not the element itself.
+      if (viewMode === 'deployment') {
+        const instance = result.deploymentInstances.find(i => i.id === id)
+        if (instance) {
+          return [
+            { label: `Edit instance of "${instance.elementFqn}"…`, onSelect: () => handleEditDeployedInstance(id) },
+            { label: 'Connect from here', onSelect: () => startConnect(id) },
+            'separator',
+            { label: 'Delete instance', danger: true, onSelect: () => handleDeleteDeployedInstance(id) },
+          ]
+        }
+        const node = result.deploymentNodes.find(n => n.id === id)
+        if (!node) return []
+        return [
+          { label: 'Edit…', onSelect: () => handleEditDeploymentNode(id) },
+          { label: 'Connect from here', onSelect: () => startConnect(id) },
+          { label: 'Add nested node…', onSelect: () => handleAddDeploymentNode(id) },
+          { label: 'Add instance here…', onSelect: () => handleAddDeployedInstance(id) },
+          'separator',
+          { label: 'Delete', danger: true, onSelect: () => handleDeleteDeploymentNode(id) },
+        ]
+      }
+      const fqn = id
       return [
         { label: 'Edit…', onSelect: () => handleEditElement(fqn) },
         { label: 'Connect from here', onSelect: () => startConnect(fqn) },
@@ -1098,6 +1127,13 @@ export default function App() {
       ]
     }
     const id = contextMenu.id
+    // Deployment relations have no label to edit (see mutate.ts - there's
+    // no updateDeploymentRelation, matching Deployment.tsx's own sidebar
+    // list, which only ever offers delete for these) - just delete, and
+    // the right kind of it.
+    if (viewMode === 'deployment') {
+      return [{ label: 'Delete', danger: true, onSelect: () => handleDeleteDeploymentRelation(id) }]
+    }
     return [
       { label: 'Edit label…', onSelect: () => handleEditRelation(id) },
       { label: 'Delete', danger: true, onSelect: () => handleDeleteRelation(id) },
