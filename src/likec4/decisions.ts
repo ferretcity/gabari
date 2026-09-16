@@ -50,7 +50,9 @@ What becomes easier or harder as a result?
   requirement: {
     label: 'Requirement',
     prefix: 'REQ',
-    template: `WHEN <trigger> THE <system> SHALL <response>.
+    template: `As a <user or role>, I want <goal>, so that <benefit>.
+
+WHEN <trigger> THE <system> SHALL <response>.
 
 Add acceptance criteria, constraints, or rationale here.
 `,
@@ -107,6 +109,20 @@ export interface DecisionRecord {
   title: string
   status: DecisionStatus
   body: string
+  /** `kind === 'compliance'` only - identifying metadata pulled out of
+   * prose and into real fields, named after Gemara's own vocabulary
+   * (github.com/ossf/gemara) so a record can line up with it later
+   * without adopting its CUE schema: `controlId` echoes a Gemara
+   * `#Control.id`, `framework`/`frameworkVersion` echo a
+   * `#GuidanceCatalog`'s type and version, `evidenceRef` echoes
+   * `#EvidenceMapping`'s reference-id/coordinate idea collapsed into one
+   * free-text field, same as every other field in this hand-rolled
+   * format. All optional and all plain strings - no parser for an
+   * external Gemara catalog file, by design. */
+  controlId?: string
+  framework?: string
+  frameworkVersion?: string
+  evidenceRef?: string
 }
 
 export function isDecisionFile(path: string): boolean {
@@ -166,7 +182,18 @@ function parseDecisionFile(path: string, text: string): DecisionRecord | null {
   if (!parsed) return null
   const { data, body } = parsed
   if (!data.id || !data.kind || !data.title || !isDecisionKind(data.kind) || !isDecisionStatus(data.status ?? '')) return null
-  return { path, id: data.id, kind: data.kind, title: data.title, status: data.status as DecisionStatus, body }
+  return {
+    path,
+    id: data.id,
+    kind: data.kind,
+    title: data.title,
+    status: data.status as DecisionStatus,
+    body,
+    controlId: data['control-id'] || undefined,
+    framework: data.framework || undefined,
+    frameworkVersion: data['framework-version'] || undefined,
+    evidenceRef: data['evidence-ref'] || undefined,
+  }
 }
 
 export function readDecision(files: Files, path: string): DecisionRecord | null {
@@ -176,7 +203,15 @@ export function readDecision(files: Files, path: string): DecisionRecord | null 
 
 function serialize(record: DecisionRecord): string {
   const body = record.body.replace(/\s+$/, '')
-  return `---\nid: ${record.id}\nkind: ${record.kind}\ntitle: ${quoteYaml(record.title)}\nstatus: ${record.status}\n---\n${body}\n`
+  const optional = [
+    record.controlId && `control-id: ${quoteYaml(record.controlId)}`,
+    record.framework && `framework: ${quoteYaml(record.framework)}`,
+    record.frameworkVersion && `framework-version: ${quoteYaml(record.frameworkVersion)}`,
+    record.evidenceRef && `evidence-ref: ${quoteYaml(record.evidenceRef)}`,
+  ]
+    .filter(Boolean)
+    .join('\n')
+  return `---\nid: ${record.id}\nkind: ${record.kind}\ntitle: ${quoteYaml(record.title)}\nstatus: ${record.status}\n${optional ? optional + '\n' : ''}---\n${body}\n`
 }
 
 export function writeDecision(files: Files, record: DecisionRecord): Files {

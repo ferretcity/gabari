@@ -1498,6 +1498,17 @@ export default function App() {
               diagrams={result.diagrams}
               views={result.views}
               activeViewId={activeViewId}
+              decisionRecords={relatedDecisionRecords(
+                activeViewId ?? '',
+                result.diagrams.find(d => d.id === activeViewId)?.nodes.map(n => n.modelRef) ?? [],
+                result.elements,
+                result.views,
+                decisionRecords,
+              )}
+              onOpenDecision={path => {
+                setSidebarPanel('decisions')
+                handleSelectDecision(path)
+              }}
               revision={revision}
               connectHint={
                 connectPendingSource

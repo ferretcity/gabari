@@ -16,6 +16,7 @@ import { findNodeFqnAtPoint } from '../likec4/domHitTest'
 import { techIconRenderer } from '../likec4/icons'
 import type { ManualLayouts } from '../likec4/manualLayouts'
 import type { ViewSummary } from '../likec4/engine'
+import type { DecisionRecord } from '../likec4/decisions'
 import { buildViewTree, type ViewTreeNode } from '../likec4/viewOrganization'
 
 export default function DiagramPanel({
@@ -23,6 +24,8 @@ export default function DiagramPanel({
   diagrams,
   views,
   activeViewId,
+  decisionRecords,
+  onOpenDecision,
   revision,
   connectHint,
   manualLayouts,
@@ -53,6 +56,13 @@ export default function DiagramPanel({
   views: ViewSummary[]
   /** which view is showing; `null` renders the empty state */
   activeViewId: string | null
+  /** decisions linked to the active view itself, or to any element
+   * rendered as a node within it - see `decisions.ts`'s
+   * `relatedDecisionRecords` (same computation Disseminate reports
+   * already use, just for whichever view is on screen right now) */
+  decisionRecords: DecisionRecord[]
+  /** jump to a decision in the sidebar - path is `DecisionRecord.path` */
+  onOpenDecision: (path: string) => void
   /** bumped on every successful parse, used to force the canvas to re-fit */
   revision: number
   /** shown as a banner when connect-mode is active */
@@ -111,6 +121,7 @@ export default function DiagramPanel({
   const [dragOver, setDragOver] = useState(false)
   const [dragOverNode, setDragOverNode] = useState<string | null>(null)
   const [viewContextMenu, setViewContextMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [decisionsMenu, setDecisionsMenu] = useState<{ x: number; y: number } | null>(null)
   const activeIsDynamic = views.find(v => v.id === activeViewId)?.isDynamic ?? false
   // Two fully separate view lists, one per mode - never merged into a
   // single badged strip (see the deployment-support plan's "keep the
@@ -362,6 +373,17 @@ export default function DiagramPanel({
           onClose={() => setViewContextMenu(null)}
         />
       )}
+      {decisionsMenu && (
+        <ContextMenu
+          x={decisionsMenu.x}
+          y={decisionsMenu.y}
+          items={decisionRecords.map(d => ({
+            label: `${d.id}: ${d.title} (${d.status})`,
+            onSelect: () => onOpenDecision(d.path),
+          }))}
+          onClose={() => setDecisionsMenu(null)}
+        />
+      )}
 
       {!model || !activeViewId || currentModeViews.length === 0 ? (
         <div className="diagram-empty">
@@ -387,6 +409,16 @@ export default function DiagramPanel({
                 title="Choose which existing elements this view shows - separate from adding new ones to the project"
               >
                 {viewMode === 'deployment' ? 'Contents in view…' : 'Elements in view…'}
+              </button>
+            )}
+            {decisionRecords.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                title="Decisions linked to this view, or to an element rendered in it"
+                onClick={e => setDecisionsMenu({ x: e.clientX, y: e.clientY })}
+              >
+                🔗 {decisionRecords.length} decision{decisionRecords.length === 1 ? '' : 's'}
               </button>
             )}
             <div className="canvas-toolbar-spacer" />
