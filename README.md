@@ -1,3 +1,5 @@
+<img src="branding/gabari/mark-512.png" width="64" height="64" alt="" align="left" style="margin-right: 12px" />
+
 # Gabari
 
 *Draft your architecture.*
@@ -52,7 +54,7 @@ paths — upload or serve it as-is on any static host (Netlify, Vercel, S3,
 nginx, GitHub Pages, a subfolder, etc.), no server-side config needed.
 
 **Self-hosting without building it yourself**: every
-[release](https://github.com/jonlamca/gabari/releases) has a
+[release](https://github.com/ferretcity/gabari/releases) has a
 `gabari-vX.Y.Z.tar.gz` attached — that's the same `dist/` output above,
 pre-built. Download it, extract it, and point any static file server at
 the extracted folder (`index.html` and `assets/` sit right at its top
